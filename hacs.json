@@ -1,5 +1,6 @@
 {
     "name": "VU AWS S3",
+    "content_in_root": false,
     "render_readme": true,
     "domain": "vu_aws_s3",
     "documentation": "https://github.com/yourusername/vu_aws_s3",
@@ -11,5 +12,6 @@
     "requirements": [
         "aiobotocore==2.21.1"
     ],
-    "iot_class": "cloud_push"
+    "iot_class": "cloud_push",
+    "homeassistant": "2023.9.0"
 }
