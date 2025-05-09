@@ -1,0 +1,128 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to AWS S3",
+        "description": "Set up an AWS S3 connection with folder support.\n\nFor more information, check the [AWS S3 documentation]({aws_s3_docs_url}) and [boto3 documentation]({boto3_docs_url}).",
+        "data": {
+          "access_key_id": "Access Key ID",
+          "secret_access_key": "Secret Access Key",
+          "bucket": "Bucket",
+          "endpoint_url": "Endpoint URL",
+          "path": "Folder Path (optional)"
+        }
+      }
+    },
+    "error": {
+      "invalid_credentials": "Invalid AWS credentials",
+      "invalid_bucket_name": "Invalid bucket name",
+      "invalid_endpoint_url": "Invalid endpoint URL format",
+      "cannot_connect": "Failed to connect to AWS S3",
+      "invalid_path_format": "Invalid path format - must not start with a slash"
+    },
+    "abort": {
+      "already_configured": "This combination of bucket, endpoint URL, and path is already configured"
+    }
+  },
+  "services": {
+    "get_file": {
+      "name": "Get File",
+      "description": "Downloads a file from S3 to your local filesystem.",
+      "fields": {
+        "entry_id": {
+          "name": "Integration",
+          "description": "The AWS S3 Folder integration to use. Leave empty to use the first configured one."
+        },
+        "key": {
+          "name": "File Key",
+          "description": "The key (path) of the file to download from S3, relative to the configured folder path."
+        },
+        "local_file": {
+          "name": "Local File Path",
+          "description": "The absolute or relative path where to save the downloaded file. Relative paths will be relative to your Home Assistant configuration folder."
+        }
+      }
+    },
+    "put_file": {
+      "name": "Put File",
+      "description": "Uploads a file from your local filesystem to S3.",
+      "fields": {
+        "entry_id": {
+          "name": "Integration",
+          "description": "The AWS S3 Folder integration to use. Leave empty to use the first configured one."
+        },
+        "key": {
+          "name": "File Key",
+          "description": "The key (path) where to save the file in S3, relative to the configured folder path."
+        },
+        "local_file": {
+          "name": "Local File Path",
+          "description": "The absolute or relative path of the file to upload. Relative paths will be relative to your Home Assistant configuration folder."
+        },
+        "content_type": {
+          "name": "Content Type",
+          "description": "The MIME type of the uploaded file. Defaults to 'application/octet-stream'."
+        }
+      }
+    },
+    "delete_file": {
+      "name": "Delete File",
+      "description": "Deletes a file from S3.",
+      "fields": {
+        "entry_id": {
+          "name": "Integration",
+          "description": "The AWS S3 Folder integration to use. Leave empty to use the first configured one."
+        },
+        "key": {
+          "name": "File Key",
+          "description": "The key (path) of the file to delete from S3, relative to the configured folder path."
+        }
+      }
+    },
+    "list_files": {
+      "name": "List Files",
+      "description": "Lists files and folders in an S3 location.",
+      "fields": {
+        "entry_id": {
+          "name": "Integration",
+          "description": "The AWS S3 Folder integration to use. Leave empty to use the first configured one."
+        },
+        "prefix": {
+          "name": "Prefix",
+          "description": "The prefix (folder path) to list, relative to the configured folder path. Default is the configured path root."
+        },
+        "delimiter": {
+          "name": "Delimiter",
+          "description": "Character used to group keys. Default is '/' which lists objects in a directory-like mode."
+        },
+        "max_keys": {
+          "name": "Max Keys",
+          "description": "Maximum number of keys to return. Default is 1000."
+        }
+      }
+    }
+  },
+  "issues": {
+    "no_configured_entries": {
+      "title": "No AWS S3 Folder integrations configured",
+      "fix_flow": {
+        "title": "Set up AWS S3 Folder integration",
+        "step": {
+          "confirm": {
+            "title": "Set up AWS S3 Folder integration",
+            "description": "Do you want to set up an AWS S3 Folder integration?"
+          }
+        }
+      }
+    },
+    "entry_not_found": {
+      "title": "AWS S3 Folder integration not found"
+    },
+    "integration_not_loaded": {
+      "title": "AWS S3 Folder integration not loaded"
+    },
+    "file_not_found": {
+      "title": "Local file not found"
+    }
+  }
+}
