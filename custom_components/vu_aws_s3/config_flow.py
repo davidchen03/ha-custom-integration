@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 from urllib.parse import urlparse
 
@@ -31,6 +32,8 @@ from .const import (
     DOMAIN,
 )
 
+_LOGGER = logging.getLogger(__name__)
+
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_ACCESS_KEY_ID): cv.string,
@@ -52,7 +55,7 @@ class S3FolderConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle a flow initiated by the user."""
+        """Handle user input."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -64,56 +67,71 @@ class S3FolderConfigFlow(ConfigFlow, domain=DOMAIN):
                 }
             )
 
-            # 確保路徑是有效格式的 S3 路徑 (不以 '/' 開頭，但可以以 '/' 結尾)
             path = user_input.get(CONF_PATH, DEFAULT_PATH)
             if path and path.startswith("/"):
                 errors[CONF_PATH] = "invalid_path_format"
             else:
-                # 確保路徑如果不為空則以 '/' 結尾
                 if path and not path.endswith("/"):
-                    user_input[CONF_PATH] = f"{path}/"
-                
-                if not urlparse(user_input[CONF_ENDPOINT_URL]).hostname.endswith(
-                    AWS_DOMAIN
-                ):
+                    path += "/"
+                    user_input[CONF_PATH] = path
+
+                endpoint_url = user_input[CONF_ENDPOINT_URL]
+                hostname = urlparse(endpoint_url).hostname
+
+                if not hostname or not hostname.endswith(AWS_DOMAIN):
+                    _LOGGER.error("Invalid endpoint URL: %s, hostname: %s", endpoint_url, hostname)
                     errors[CONF_ENDPOINT_URL] = "invalid_endpoint_url"
                 else:
+                    _LOGGER.debug(
+                        "Attempting to connect to AWS S3: %s, bucket: %s, path: %s",
+                        endpoint_url,
+                        user_input[CONF_BUCKET],
+                        path,
+                    )
                     try:
                         session = AioSession()
                         async with session.create_client(
                             "s3",
-                            endpoint_url=user_input.get(CONF_ENDPOINT_URL),
+                            endpoint_url=endpoint_url,
                             aws_secret_access_key=user_input[CONF_SECRET_ACCESS_KEY],
                             aws_access_key_id=user_input[CONF_ACCESS_KEY_ID],
+                            region_name=endpoint_url.split(".")[1] if "." in endpoint_url else None,
                         ) as client:
-                            await client.head_bucket(Bucket=user_input[CONF_BUCKET])
-                    except ClientError:
+                            result = await client.list_objects_v2(
+                                Bucket=user_input[CONF_BUCKET],
+                                Prefix=path,
+                                MaxKeys=1
+                            )
+                            _LOGGER.debug("list_objects_v2 result: %s", result)
+                    except ClientError as err:
+                        _LOGGER.error("AWS credentials or bucket/prefix error: %s", str(err))
                         errors["base"] = "invalid_credentials"
                     except ParamValidationError as err:
+                        _LOGGER.error("Parameter validation error: %s", str(err))
                         if "Invalid bucket name" in str(err):
                             errors[CONF_BUCKET] = "invalid_bucket_name"
-                    except ValueError:
+                        else:
+                            errors["base"] = "param_validation_error"
+                    except ValueError as err:
+                        _LOGGER.error("Value error: %s", str(err))
                         errors[CONF_ENDPOINT_URL] = "invalid_endpoint_url"
-                    except ConnectionError:
+                    except ConnectionError as err:
+                        _LOGGER.error("Connection error: %s", str(err))
                         errors[CONF_ENDPOINT_URL] = "cannot_connect"
+                    except Exception as err:  # pylint: disable=broad-except
+                        _LOGGER.exception("Unexpected error: %s", str(err))
+                        errors["base"] = "unknown_error"
                     else:
-                        # 設置標題，如果有路徑則包含路徑
-                        title = user_input[CONF_BUCKET]
-                        if path := user_input.get(CONF_PATH):
-                            title = f"{title}/{path}"
-                        
-                        return self.async_create_entry(
-                            title=title, data=user_input
-                        )
+                        title = f"{user_input[CONF_BUCKET]}/{path}" if path else user_input[CONF_BUCKET]
+                        return self.async_create_entry(title=title, data=user_input)
 
         return self.async_show_form(
             step_id="user",
-            data_schema=self.add_suggested_values_to_schema(
-                STEP_USER_DATA_SCHEMA, user_input
-            ),
+            data_schema=self.add_suggested_values_to_schema(STEP_USER_DATA_SCHEMA, user_input),
             errors=errors,
             description_placeholders={
                 "aws_s3_docs_url": DESCRIPTION_AWS_S3_DOCS_URL,
                 "boto3_docs_url": DESCRIPTION_BOTO3_DOCS_URL,
             },
         )
+

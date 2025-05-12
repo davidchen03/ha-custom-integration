@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from typing import cast
 
 from aiobotocore.client import AioBaseClient as S3Client
@@ -27,7 +26,6 @@ from .const import (
 
 type S3FolderConfigEntry = ConfigEntry[S3Client]
 
-
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -37,55 +35,63 @@ async def async_setup_entry(hass: HomeAssistant, entry: S3FolderConfigEntry) -> 
     data = cast(dict, entry.data)
     try:
         session = AioSession()
-        # pylint: disable-next=unnecessary-dunder-call
         client = await session.create_client(
             "s3",
             endpoint_url=data.get(CONF_ENDPOINT_URL),
             aws_secret_access_key=data[CONF_SECRET_ACCESS_KEY],
             aws_access_key_id=data[CONF_ACCESS_KEY_ID],
         ).__aenter__()
-        
-        # 檢查 bucket 是否可以訪問
-        await client.head_bucket(Bucket=data[CONF_BUCKET])
-        
-        # 如果有指定路徑，檢查路徑是否可以訪問（列出該路徑下的物件）
-        path = data.get(CONF_PATH, DEFAULT_PATH)
-        if path:
-            await client.list_objects_v2(
-                Bucket=data[CONF_BUCKET],
-                Prefix=path,
-                MaxKeys=1,
-            )
-            
+
+        # Process prefix path
+        path = data.get(CONF_PATH, DEFAULT_PATH) or ""
+        if path and not path.endswith("/"):
+            path += "/"
+
+        _LOGGER.debug("Validating list_objects_v2: bucket=%s, prefix=%s",
+                      data[CONF_BUCKET], path)
+
+        # Validate prefix permissions using list_objects_v2
+        await client.list_objects_v2(
+            Bucket=data[CONF_BUCKET],
+            Prefix=path,
+            MaxKeys=1,
+        )
+
     except ClientError as err:
+        _LOGGER.error("S3 credential error or unable to access specified prefix: %s", err)
         raise ConfigEntryError(
             translation_domain=DOMAIN,
             translation_key="invalid_credentials",
         ) from err
     except ParamValidationError as err:
+        _LOGGER.error("Parameter validation error: %s", err)
         if "Invalid bucket name" in str(err):
             raise ConfigEntryError(
                 translation_domain=DOMAIN,
                 translation_key="invalid_bucket_name",
             ) from err
+        raise
     except ValueError as err:
+        _LOGGER.error("URL format error: %s", err)
         raise ConfigEntryError(
             translation_domain=DOMAIN,
             translation_key="invalid_endpoint_url",
         ) from err
     except ConnectionError as err:
+        _LOGGER.error("Unable to connect to AWS S3: %s", err)
         raise ConfigEntryNotReady(
             translation_domain=DOMAIN,
             translation_key="cannot_connect",
         ) from err
 
+    # Store client to entry
     entry.runtime_data = client
 
-    # 註冊服務
+    # Register services
     from . import services
-
     await services.async_setup_services(hass)
 
+    # Backup agent listeners
     def notify_backup_listeners() -> None:
         for listener in hass.data.get(DATA_BACKUP_AGENT_LISTENERS, []):
             listener()
@@ -104,27 +110,17 @@ async def async_unload_entry(hass: HomeAssistant, entry: S3FolderConfigEntry) ->
 
 def join_path_elements(base_path: str, *paths: str) -> str:
     """Join path elements for S3 keys.
-    
-    This function joins the base path with additional path elements,
-    ensuring there are no double slashes and that the path correctly
-    maintains trailing slashes as needed.
+
+    Ensures consistent joining with trailing slashes for base,
+    and no leading slashes for components.
     """
-    # 如果基本路徑是空的，跳過它
     if not base_path:
         base = ""
     else:
-        # 確保基本路徑以 / 結尾
         base = base_path if base_path.endswith("/") else f"{base_path}/"
-    
+
     if not paths:
         return base
-    
-    # 將所有部分連接起來，移除前導 /
-    path_parts = [p.lstrip("/") for p in paths if p]
-    
-    # 如果沒有其他路徑元素，直接返回基礎路徑
-    if not path_parts:
-        return base
-    
-    # 連接所有路徑元素
-    return f"{base}{''.join(path_parts)}"
+
+    path_parts = [p.strip("/") for p in paths if p]
+    return f"{base}{'/'.join(path_parts)}"

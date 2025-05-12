@@ -16,9 +16,11 @@
     "error": {
       "invalid_credentials": "Invalid AWS credentials",
       "invalid_bucket_name": "Invalid bucket name",
-      "invalid_endpoint_url": "Invalid endpoint URL format",
-      "cannot_connect": "Failed to connect to AWS S3",
-      "invalid_path_format": "Invalid path format - must not start with a slash"
+      "invalid_endpoint_url": "Invalid endpoint URL format. Make sure the URL includes the region and ends with amazonaws.com",
+      "cannot_connect": "Failed to connect to AWS S3. Check your network connection and ensure your region is accessible.",
+      "invalid_path_format": "Invalid path format - must not start with a slash",
+      "param_validation_error": "Parameter validation error. Check your inputs for any invalid characters or formats",
+      "unknown_error": "An unexpected error occurred. Please check Home Assistant logs for details"
     },
     "abort": {
       "already_configured": "This combination of bucket, endpoint URL, and path is already configured"
