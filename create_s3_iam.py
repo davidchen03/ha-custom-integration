@@ -130,6 +130,40 @@ def create_iam_user_and_policy(profile, bucket, prefix_arg, iam_name, path_arg=N
         print(f"❌ 處理 Access Key 時發生錯誤: {e}", file=sys.stderr)
         return
 
+    # 驗證並視需要建立 S3 路徑
+    # S3 中的資料夾是鍵以 '/' 結尾的 0 位元組物件
+    folder_key = s3_effective_path.rstrip('/') + '/'
+
+    try:
+        # 1. 檢查資料夾物件是否已存在
+        s3.head_object(Bucket=bucket, Key=folder_key)
+        print(f"✅ S3 資料夾路徑已存在: s3://{bucket}/{folder_key}")
+    except botocore.exceptions.ClientError as e:
+        # 檢查是否為 'Not Found' (404) 錯誤
+        error_code = e.response.get('Error', {}).get('Code')
+        if error_code == '404' or e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
+            # 資料夾物件不存在，嘗試建立它
+            print(f"ℹ️ S3 資料夾路徑 s3://{bucket}/{folder_key} 不存在。正在嘗試建立...")
+            try:
+                s3.put_object(Bucket=bucket, Key=folder_key, Body=b'') # 建立資料夾物件
+                print(f"🔧 已建立 S3 資料夾路徑: s3://{bucket}/{folder_key}")
+            except botocore.exceptions.ClientError as e_create:
+                print(f"❌ 建立 S3 資料夾路徑失敗: s3://{bucket}/{folder_key}. 錯誤: {e_create}", file=sys.stderr)
+                return # 如果資料夾建立失敗則停止
+        else:
+            # 其他 head_object 錯誤 (例如權限問題)
+            print(f"❌ 檢查 S3 資料夾路徑時發生非預期的錯誤: s3://{bucket}/{folder_key}. 錯誤: {e}", file=sys.stderr)
+            return # 如果無法驗證/建立資料夾路徑則停止
+
+    # 2. 在確認資料夾存在(或已建立)後，驗證 IAM 使用者是否可以列出該路徑下的物件
+    # 這與原始腳本的驗證邏輯一致，確保 Policy 設定正確
+    try:
+        s3.list_objects_v2(Bucket=bucket, Prefix=folder_key, MaxKeys=1)
+        print(f"✅ IAM 使用者有權限讀取指定路徑: s3://{bucket}/{folder_key}")
+    except botocore.exceptions.ClientError as e_list:
+        print(f"❌ IAM 使用者無法讀取指定路徑 (即使路徑已建立/存在)。請檢查 IAM Policy 設定是否允許 's3:ListBucket' on 'arn:aws:s3:::{bucket}' with prefix '{folder_key}'. 錯誤: {e_list}", file=sys.stderr)
+        # 根據需求，這裡也可能需要 return
+
     # 驗證是否可讀 prefix/path
     path_to_check_s3 = s3_effective_path if s3_effective_path.endswith("/") else s3_effective_path + "/"
     try:
